@@ -11,6 +11,10 @@ Data flow (see docs/ARCHITECTURE.md):
 """
 from __future__ import annotations
 
+import shutil
+import tempfile
+import urllib.request
+import zipfile
 import json
 import os
 import queue
@@ -69,8 +73,56 @@ def model_path(config: LanguageConfig) -> Path:
     return MODELS_DIR / config.folder
 
 
+
+def _download_model(config: LanguageConfig) -> None:
+    """Download a missing speech model into the models directory."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    path = model_path(config)
+
+    if config.backend == "vosk":
+        url = (
+            "https://alphacephei.com/vosk/models/"
+            "vosk-model-small-en-us-0.15.zip"
+        )
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".zip", dir=MODELS_DIR, delete=False
+        ) as temp:
+            archive = Path(temp.name)
+            with urllib.request.urlopen(url, timeout=120) as response:
+                shutil.copyfileobj(response, temp)
+
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(MODELS_DIR)
+        finally:
+            archive.unlink(missing_ok=True)
+
+    elif config.backend == "whisper":
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(
+            repo_id="Systran/faster-whisper-small",
+            local_dir=str(path),
+        )
+
+    if not path.is_dir():
+        raise RuntimeError(f"Model folder was not created: {path}")
+
+
 def is_model_installed(language: str) -> bool:
-    return model_path(LANGUAGES[language]).is_dir()
+    config = LANGUAGES[language]
+    path = model_path(config)
+
+    if path.is_dir():
+        return True
+
+    try:
+        _download_model(config)
+        return path.is_dir()
+    except Exception as exc:
+        print(f"Model download failed for {language}: {exc}")
+        return False
 
 
 def load_model(language: str):
@@ -79,7 +131,7 @@ def load_model(language: str):
     if config is None:
         raise ValueError(f"Unsupported language: {language}")
     path = model_path(config)
-    if not path.is_dir():
+    if not path.is_dir() and not is_model_installed(language):
         raise ModelNotInstalled(config)
     if config.backend == "vosk":
         from vosk import Model, SetLogLevel
