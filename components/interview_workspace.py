@@ -80,7 +80,11 @@ def render_workspace(lang: str) -> None:
             mode=WebRtcMode.SENDONLY,
             audio_frame_callback=make_audio_callback(session),
             media_stream_constraints={"audio": {"echoCancellation": True, "noiseSuppression": True}, "video": False},
-            rtc_configuration={"iceServers": []},     # local use: no external STUN server contacted
+            rtc_configuration={
+                "iceServers": [
+                    {"urls": ["stun:stun.l.google.com:19302"]}
+                ]
+            },   # local use: no external STUN server contacted
             translations=WEBRTC_TEXT[lang],
         )
         notice_ph = st.empty()
