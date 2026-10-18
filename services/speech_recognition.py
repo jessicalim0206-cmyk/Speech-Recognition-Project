@@ -136,6 +136,9 @@ def load_model(language: str):
     if config.backend == "vosk":
         from vosk import Model, SetLogLevel
         SetLogLevel(-1)
+        print(f"[SpeakReady] Backend: {config.backend}")
+        print(f"[SpeakReady] Model path: {path}")
+        print(f"[SpeakReady] Model exists: {path.is_dir()}")
         return Model(str(path))
     from faster_whisper import WhisperModel
     return WhisperModel(str(path), device="cpu", compute_type="int8")
