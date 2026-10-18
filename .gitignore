@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+models/*
+!models/README.md
+evaluation/clips/
+evaluation/manifest.csv
