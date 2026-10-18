@@ -94,9 +94,6 @@ def render_workspace(lang: str) -> None:
     controls = st.container()
 
     playing = ctx.state.playing
-    st.write("DEBUG WebRTC:", ctx.state)
-    st.write("Playing:", ctx.state.playing)
-    st.write("Session started:", session.started)
     if playing and not session.started:
         session.start()
     if session.started and not session.stopped and not playing:
@@ -104,12 +101,6 @@ def render_workspace(lang: str) -> None:
 
     snap = session.snapshot()
 
-    st.write("DEBUG — Recording")
-    st.write("WebRTC playing:", playing)
-    st.write("Session started:", session.started)
-    st.write("Session stopped:", session.stopped)
-    st.write("Session status:", snap.status)
-    st.write("Elapsed seconds:", snap.elapsed)
 
     _controls(controls, t, snap, keywords, question, lang)
 
