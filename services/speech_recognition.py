@@ -55,12 +55,18 @@ def _indonesian_config() -> LanguageConfig:
         "huggingface-cli download Systran/faster-whisper-small --local-dir models/faster-whisper-small")
 
 
+
 LANGUAGES: dict[str, LanguageConfig] = {
-    "en": LanguageConfig("en", "English", "vosk", "vosk-model-small-en-us-0.15",
-                         "Download https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip "
-                         "and unzip it into models/"),
+    "en": LanguageConfig(
+        "en",
+        "English",
+        "whisper",
+        "faster-whisper-small",
+        "Download the faster-whisper-small model locally.",
+    ),
     "id": _indonesian_config(),
 }
+
 
 
 class ModelNotInstalled(Exception):

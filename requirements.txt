@@ -3,5 +3,5 @@ streamlit-webrtc>=0.60
 vosk>=0.3.44
 numpy>=1.26
 jiwer>=3.0
-# Optional: only needed if you use the faster-whisper backend (default for Bahasa Indonesia)
 faster-whisper>=1.0
+huggingface-hub>=0.23

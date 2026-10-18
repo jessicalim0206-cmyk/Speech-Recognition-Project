@@ -92,37 +92,438 @@ def count_words(text: str) -> int:
     return len(text.split())
 
 
-def evaluate_answer(transcript: str, keywords: list[str], language: str) -> Feedback:
-    t, lower = TEXT[language], transcript.lower()
-    words = count_words(transcript)
 
-    matched = [k for k in keywords if k in lower]
-    ratio = len(matched) / len(keywords) if keywords else 0
-    label = "strong" if ratio >= 0.4 else "partial" if ratio >= 0.2 else "low"
+def detect_question_type(question: str, language: str) -> str:
+    """Classify common interview questions using simple phrase matching."""
+    q = question.lower().strip()
 
-    found = [p for p, cues in STAR_CUES[language].items() if any(c in lower for c in cues)]
-    missing = [p for p in STAR_CUES[language] if p not in found]
-    names = t["star_names"]
-    structure = t["found"].format(parts=", ".join(names[p] for p in found)) if found else ""
-    if missing:
-        structure = (structure + " " + t["missing"].format(parts=", ".join(names[p] for p in missing))).strip()
-    elif not structure:
-        structure = ""
+    if language == "en":
+        if any(x in q for x in [
+            "tell me about yourself", "introduce yourself"
+        ]):
+            return "introduction"
+        if any(x in q for x in [
+            "why do you want", "why are you interested",
+            "what do you hope to learn", "where do you see yourself"
+        ]):
+            return "motivation"
+        if any(x in q for x in [
+            "greatest strength", "biggest weakness",
+            "your strengths", "your weaknesses"
+        ]):
+            return "strengths"
+        if any(x in q for x in [
+            "tell me about a time", "describe a time",
+            "difficult problem", "when you are stuck",
+            "how did you approach"
+        ]):
+            return "behavioral"
+        if "balance your studies" in q:
+            return "planning"
 
-    if words < 40:
-        length_text, length_ok = t["short"].format(n=words), False
-    elif words > 200:
-        length_text, length_ok = t["long"].format(n=words), False
     else:
-        length_text, length_ok = t["ok_len"].format(n=words), True
+        if any(x in q for x in [
+            "ceritakan tentang diri", "perkenalkan diri"
+        ]):
+            return "introduction"
+        if any(x in q for x in [
+            "mengapa", "apa yang ingin anda pelajari",
+            "di mana anda melihat diri"
+        ]):
+            return "motivation"
+        if any(x in q for x in [
+            "kelebihan terbesar", "kelemahan terbesar"
+        ]):
+            return "strengths"
+        if any(x in q for x in [
+            "ceritakan saat", "masalah sulit",
+            "bagaimana pendekatan"
+        ]):
+            return "behavioral"
+        if "menyeimbangkan kuliah" in q:
+            return "planning"
 
-    suggestions = [t["tip"][p] for p in missing]
+    return "general"
+
+
+QUESTION_TIPS = {
+    "en": {
+        "introduction": (
+            "Briefly introduce your background, relevant skills or experience, "
+            "and what you hope to contribute."
+        ),
+        "motivation": (
+            "Connect your motivation to this role, explain what you hope to learn, "
+            "and describe how you could contribute."
+        ),
+        "strengths": (
+            "Name one specific strength and support it with a concrete example "
+            "of how you used it."
+        ),
+        "behavioral": (
+            "Use STAR: explain the situation, your responsibility, the actions "
+            "you took, and the result or lesson learned."
+        ),
+        "planning": (
+            "Explain how you would plan your schedule, prioritize tasks, "
+            "and handle deadlines."
+        ),
+        "general": (
+            "Answer the specific question directly, then support your main point "
+            "with a relevant detail or example."
+        ),
+    },
+    "id": {
+        "introduction": (
+            "Perkenalkan latar belakang, kemampuan atau pengalaman yang relevan, "
+            "serta kontribusi yang ingin Anda berikan."
+        ),
+        "motivation": (
+            "Hubungkan motivasi Anda dengan posisi ini, jelaskan hal yang ingin "
+            "dipelajari, dan kontribusi yang bisa diberikan."
+        ),
+        "strengths": (
+            "Sebutkan satu kelebihan yang spesifik dan berikan contoh nyata "
+            "saat Anda menggunakannya."
+        ),
+        "behavioral": (
+            "Gunakan STAR: jelaskan situasi, tanggung jawab, tindakan yang Anda "
+            "lakukan, serta hasil atau pelajaran yang diperoleh."
+        ),
+        "planning": (
+            "Jelaskan cara mengatur jadwal, menentukan prioritas, "
+            "dan menyelesaikan tugas sesuai tenggat."
+        ),
+        "general": (
+            "Jawab pertanyaan secara langsung, lalu dukung poin utama "
+            "dengan detail atau contoh yang relevan."
+        ),
+    },
+}
+
+
+
+def get_content_suggestions(
+    transcript: str,
+    language: str,
+    question_type: str,
+) -> list[str]:
+    """Give transparent, phrase-based suggestions based on answer content."""
+    text = transcript.lower()
+    suggestions = []
+
+    if language == "en":
+        if question_type == "introduction":
+            has_background = any(
+                phrase in text
+                for phrase in [
+                    "my name is",
+                    "i study",
+                    "i am studying",
+                    "i major in",
+                    "i majored in",
+                    "i am majoring",
+                    "my major",
+                    "computer science",
+                    "i graduated",
+                ]
+            )
+            has_skill = any(
+                phrase in text
+                for phrase in [
+                    "skill", "programming", "coding", "python",
+                    "javascript", "communication", "teamwork",
+                ]
+            )
+            has_experience = any(
+                phrase in text
+                for phrase in [
+                    "project", "internship", "experience",
+                    "i developed", "i created", "i built",
+                    "i worked on",
+                ]
+            )
+            has_goal = any(
+                phrase in text
+                for phrase in [
+                    "i hope", "i want to", "my goal",
+                    "i aim to", "in the future", "i would like",
+                ]
+            )
+
+            if not has_background:
+                suggestions.append(
+                    "Add one brief detail about your education or background."
+                )
+            if not has_skill and not has_experience:
+                suggestions.append(
+                    "Mention one relevant skill or project to make your introduction more specific."
+                )
+            elif not has_experience:
+                suggestions.append(
+                    "Consider adding a brief example of a project or experience where you used your skills."
+                )
+            if not has_goal:
+                suggestions.append(
+                    "Consider ending with what you hope to learn or contribute."
+                )
+
+            if "i am majored" in text:
+                suggestions.append(
+                    'Grammar tip: say "I am majoring in Computer Science" or "I major in Computer Science," not "I am majored in Computer Science."'
+                )
+
+            if (
+                "that's why" in text and "that is the reason" in text
+            ) or (
+                "that is why" in text and "the reason" in text
+            ):
+                suggestions.append(
+                    "Avoid repeating the same reason. Choose one clear expression to explain your motivation."
+                )
+
+        elif question_type == "strengths":
+            if not any(
+                phrase in text
+                for phrase in ["because", "for example", "such as", "when i"]
+            ):
+                suggestions.append(
+                    "Explain why this is a strength and give a specific example."
+                )
+
+        elif question_type == "motivation":
+            if not any(
+                phrase in text
+                for phrase in ["because", "so that", "learn", "contribute", "goal"]
+            ):
+                suggestions.append(
+                    "Explain why this opportunity interests you and what you hope to gain or contribute."
+                )
+
+        elif question_type == "planning":
+            if not any(
+                phrase in text
+                for phrase in ["prioritize", "schedule", "plan", "deadline", "calendar"]
+            ):
+                suggestions.append(
+                    "Give a concrete example of how you would plan your time and prioritize deadlines."
+                )
+
+    else:
+        if question_type == "introduction":
+            has_background = any(
+                phrase in text
+                for phrase in [
+                    "saya kuliah", "saya sedang kuliah", "jurusan saya",
+                    "saya mengambil jurusan", "saya lulusan",
+                ]
+            )
+            has_skill = any(
+                phrase in text
+                for phrase in [
+                    "kemampuan", "pemrograman", "coding",
+                    "komunikasi", "kerja sama",
+                ]
+            )
+            has_experience = any(
+                phrase in text
+                for phrase in [
+                    "proyek", "magang", "pengalaman",
+                    "saya membuat", "saya mengembangkan",
+                ]
+            )
+            has_goal = any(
+                phrase in text
+                for phrase in [
+                    "saya ingin", "tujuan saya", "berharap",
+                    "ke depannya", "saya berharap",
+                ]
+            )
+
+            if not has_background:
+                suggestions.append(
+                    "Tambahkan satu informasi singkat tentang pendidikan atau latar belakang Anda."
+                )
+            if not has_skill and not has_experience:
+                suggestions.append(
+                    "Sebutkan satu kemampuan atau proyek yang relevan agar perkenalan lebih spesifik."
+                )
+            elif not has_experience:
+                suggestions.append(
+                    "Tambahkan contoh singkat proyek atau pengalaman yang menunjukkan kemampuan Anda."
+                )
+            if not has_goal:
+                suggestions.append(
+                    "Akhiri dengan hal yang ingin Anda pelajari atau kontribusikan."
+                )
+
+        elif question_type == "strengths":
+            if not any(
+                phrase in text
+                for phrase in ["karena", "contohnya", "misalnya", "ketika saya"]
+            ):
+                suggestions.append(
+                    "Jelaskan alasan kelebihan tersebut penting dan berikan contoh nyata."
+                )
+
+        elif question_type == "motivation":
+            if not any(
+                phrase in text
+                for phrase in ["karena", "belajar", "berkontribusi", "tujuan"]
+            ):
+                suggestions.append(
+                    "Jelaskan alasan Anda tertarik serta hal yang ingin dipelajari atau diberikan."
+                )
+
+        elif question_type == "planning":
+            if not any(
+                phrase in text
+                for phrase in ["prioritas", "jadwal", "merencanakan", "tenggat", "deadline"]
+            ):
+                suggestions.append(
+                    "Berikan contoh cara mengatur waktu dan menentukan prioritas tugas."
+                )
+
+    return suggestions
+
+
+def evaluate_answer(
+    transcript: str,
+    keywords: list[str],
+    language: str,
+    question: str = "",
+) -> Feedback:
+    t = TEXT[language]
+    lower = transcript.lower()
+    words = count_words(transcript)
+    question_type = detect_question_type(question, language)
+
+    if question_type == "introduction":
+        matched = []
+
+        if any(x in lower for x in [
+            "my name is", "i am", "i'm"
+        ]):
+            matched.append("personal introduction")
+
+        if any(x in lower for x in [
+            "computer science", "my major", "i major in",
+            "i majored in", "i am majoring in"
+        ]):
+            matched.append("education or major")
+
+        if any(x in lower for x in [
+            "coding", "programming", "i enjoy", "i love"
+        ]):
+            matched.append("interests")
+
+        if any(x in lower for x in [
+            "project", "internship", "experience",
+            "i developed", "i built", "i created"
+        ]):
+            matched.append("experience")
+
+        if any(x in lower for x in [
+            "i hope", "my goal", "in the future",
+            "i want to contribute"
+        ]):
+            matched.append("goals")
+
+        core_parts = {"personal introduction", "education or major"}
+        ratio = len(set(matched) & core_parts) / len(core_parts)
+        label = "strong" if ratio == 1 else "partial" if ratio > 0 else "low"
+    else:
+        matched = [
+            keyword for keyword in keywords
+            if keyword.lower() in lower
+        ]
+        ratio = len(matched) / len(keywords) if keywords else 0
+        label = (
+            "strong" if ratio >= 0.4
+            else "partial" if ratio >= 0.2
+            else "low"
+        )
+
+    label = (
+        "strong" if ratio >= 0.4
+        else "partial" if ratio >= 0.2
+        else "low"
+    )
+
+    # Use STAR only for experience-based questions.
+    if question_type == "behavioral":
+        found = [
+            part for part, cues in STAR_CUES[language].items()
+            if any(cue in lower for cue in cues)
+        ]
+        missing = [
+            part for part in STAR_CUES[language]
+            if part not in found
+        ]
+
+        names = t["star_names"]
+        structure_parts = []
+
+        if found:
+            structure_parts.append(
+                t["found"].format(
+                    parts=", ".join(names[p] for p in found)
+                )
+            )
+        if missing:
+            structure_parts.append(
+                t["missing"].format(
+                    parts=", ".join(names[p] for p in missing)
+                )
+            )
+
+        structure = " ".join(structure_parts)
+        suggestions = [t["tip"][part] for part in missing]
+    else:
+        found = []
+        missing = []
+        structure = QUESTION_TIPS[language][question_type]
+        suggestions = []
+
+    # Add question-specific content feedback.
+    suggestions.extend(
+        get_content_suggestions(transcript, language, question_type)
+    )
+
+    # Keep word count as guidance, not the only measure of quality.
+    if words < 40:
+        length_text = t["short"].format(n=words)
+        if language == "en":
+            suggestions.append(
+                "Your answer is brief. Add useful details rather than repeating the same point just to increase the word count."
+            )
+        else:
+            suggestions.append(
+                "Jawaban masih singkat. Tambahkan detail yang berguna, bukan mengulang poin yang sama hanya untuk menambah jumlah kata."
+            )
+    elif words > 200:
+        length_text = t["long"].format(n=words)
+        suggestions.append(t["tip_length"])
+    else:
+        length_text = t["ok_len"].format(n=words)
+
     if label == "low":
         suggestions.append(t["tip_relevance"])
-    if not length_ok:
-        suggestions.append(t["tip_length"])
+
     if not suggestions:
         suggestions.append(t["tip_good"])
 
-    return Feedback(words, label, t[f"rel_{label}"], matched, found, missing, structure, length_text,
-                    suggestions, t["caveat"])
+    suggestions = list(dict.fromkeys(suggestions))
+
+    return Feedback(
+        words,
+        label,
+        t[f"rel_{label}"],
+        matched,
+        found,
+        missing,
+        structure,
+        length_text,
+        suggestions,
+        t["caveat"],
+    )
