@@ -108,6 +108,10 @@ def render_workspace(lang: str) -> None:
     paint(snap)
     _notices(notice_ph, t, snap)
 
+    if playing and not session.stopped:
+        time.sleep(0.5)
+        st.rerun()
+
     # --- live loop: poll the session while the microphone is on ---
     while ctx.state.playing and not session.stopped:
         snap = session.snapshot()
