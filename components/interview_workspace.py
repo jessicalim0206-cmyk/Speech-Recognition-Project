@@ -96,6 +96,14 @@ def render_workspace(lang: str) -> None:
         session.stop()       # user pressed STOP: drain the queue and finalize
 
     snap = session.snapshot()
+
+    st.write("DEBUG — Recording")
+    st.write("WebRTC playing:", playing)
+    st.write("Session started:", session.started)
+    st.write("Session stopped:", session.stopped)
+    st.write("Session status:", snap.status)
+    st.write("Elapsed seconds:", snap.elapsed)
+
     _controls(controls, t, snap, keywords, question, lang)
 
     def paint(snap):
