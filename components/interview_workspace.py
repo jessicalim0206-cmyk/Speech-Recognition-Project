@@ -94,6 +94,9 @@ def render_workspace(lang: str) -> None:
     controls = st.container()
 
     playing = ctx.state.playing
+    st.write("DEBUG WebRTC:", ctx.state)
+    st.write("Playing:", ctx.state.playing)
+    st.write("Session started:", session.started)
     if playing and not session.started:
         session.start()
     if session.started and not session.stopped and not playing:
