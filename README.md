@@ -38,10 +38,9 @@ python tests/smoke_ui.py      # every page renders, friendly state when a model 
 - WER (S/D/I) and latency scripts with noise and speed conditions; Developer tests page shows only saved real results.
 - Friendly states: model missing, load failure, no audio reaching the app, no speech detected, recognition error, empty review; mic permission/device messages come from the WebRTC component (translated).
 
-## Not verified / limitations (be honest in your report)
-- **The ASR models could not be downloaded in the environment where this code was written**, so the Whisper back-end and the live microphone path have NOT been run end to end here. The streaming session, resampling, conditions, feedback and UI pages were tested with a fake backend and headless UI tests. Run the app and the evaluation yourself before reporting anything.
-- No browser screenshots were taken, so the visual design has not been inspected; check it in the browser and adjust `assets/styles.css`.
+## Limitations (be honest in your report)
+- The WER, latency and user-testing results are not part of the code: they come from your own recordings and participants (see `evaluation/README.md` and `docs/USER_TESTING.md`). Report only numbers you measured yourself.
 - Both languages use Whisper, so recognition is chunked (partial text about every 1.5 s), not truly word-by-word streaming; text can be revised when a later chunk is decoded.
-- Feedback is a phrase checklist: it can miss good answers and does not judge delivery, pronunciation, confidence or suitability.
+- Recognition speed depends on your CPU. On a slow computer the partial text lags behind the speech (the "Jeda proses" line under the timer shows the most recent delay).
+- Feedback is a phrase checklist (rules), not AI: it can miss good answers and does not judge delivery, pronunciation, confidence or suitability.
 - Fonts load from Google Fonts when online and fall back to system fonts offline.
-- No WER, latency or user-testing results are included. You must collect them.

@@ -2,7 +2,7 @@
 Audio capture helpers.
 
 Live path: streamlit-webrtc hands us av.AudioFrame objects (often 48 kHz stereo).
-We convert each one to 16 kHz mono 16-bit PCM, the format both Vosk and Whisper expect,
+We convert each one to 16 kHz mono 16-bit PCM, the format Whisper expects,
 and forward it to the recognition session immediately (no "record first, transcribe later").
 
 File path: read_wav_16k_mono() loads a test recording for the evaluation scripts.

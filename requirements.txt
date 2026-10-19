@@ -1,6 +1,5 @@
 streamlit>=1.40
 streamlit-webrtc>=0.60
-vosk>=0.3.44
 numpy>=1.26
 jiwer>=3.0
 faster-whisper>=1.0

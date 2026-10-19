@@ -12,11 +12,6 @@ Data flow (see docs/ARCHITECTURE.md):
 """
 from __future__ import annotations
 
-import shutil
-import tempfile
-import urllib.request
-import zipfile
-import json
 import os
 import queue
 import threading
@@ -38,36 +33,20 @@ MODELS_DIR = Path(os.environ.get("SPEAKREADY_MODELS_DIR", Path(__file__).resolve
 class LanguageConfig:
     code: str
     label: str
-    backend: str          # "vosk" (true streaming) or "whisper" (chunked re-decoding)
     folder: str           # folder name inside models/
     download_hint: str    # shown to the user when the model is missing
 
 
-def _indonesian_config() -> LanguageConfig:
-    # Vosk's official model list may not include Indonesian. Verify at
-    # https://alphacephei.com/vosk/models . If you have a Vosk Indonesian model,
-    # set SPEAKREADY_ID_BACKEND=vosk and SPEAKREADY_ID_FOLDER=<folder in models/>.
-    if os.environ.get("SPEAKREADY_ID_BACKEND", "whisper") == "vosk":
-        folder = os.environ.get("SPEAKREADY_ID_FOLDER", "vosk-model-id")
-        return LanguageConfig("id", "Bahasa Indonesia", "vosk", folder,
-                              f"Place a Vosk Indonesian model in models/{folder}")
-    return LanguageConfig(
-        "id", "Bahasa Indonesia", "whisper", "faster-whisper-small",
-        "huggingface-cli download Systran/faster-whisper-small --local-dir models/faster-whisper-small")
-
-
+# English and Indonesian use the same multilingual Whisper model; the language code selects the language.
+_WHISPER_FOLDER = "faster-whisper-small"
+_WHISPER_HINT = (
+    "huggingface-cli download Systran/faster-whisper-small --local-dir models/faster-whisper-small"
+)
 
 LANGUAGES: dict[str, LanguageConfig] = {
-    "en": LanguageConfig(
-        "en",
-        "English",
-        "whisper",
-        "faster-whisper-small",
-        "huggingface-cli download Systran/faster-whisper-small --local-dir models/faster-whisper-small",
-    ),
-    "id": _indonesian_config(),
+    "en": LanguageConfig("en", "English", _WHISPER_FOLDER, _WHISPER_HINT),
+    "id": LanguageConfig("id", "Bahasa Indonesia", _WHISPER_FOLDER, _WHISPER_HINT),
 }
-
 
 
 class ModelNotInstalled(Exception):
@@ -93,7 +72,6 @@ def model_path(config: LanguageConfig) -> Path:
 WHISPER_REQUIRED_FILES = ("config.json", "model.bin", "tokenizer.json")
 WHISPER_VOCAB_FILES = ("vocabulary.txt", "vocabulary.json")      # at least one must exist
 WHISPER_MIN_MODEL_BYTES = 100 * 1024 * 1024                      # real model.bin is hundreds of MB
-VOSK_REQUIRED_ENTRIES = ("am/final.mdl", "conf/mfcc.conf", "graph")
 
 
 def _non_empty_file(path: Path) -> bool:
@@ -106,21 +84,16 @@ def model_problems(config: LanguageConfig) -> list[str]:
     if not path.is_dir():
         return [f"folder {path} does not exist"]
     problems: list[str] = []
-    if config.backend == "whisper":
-        for name in WHISPER_REQUIRED_FILES:
-            if not (path / name).is_file():
-                problems.append(f"missing {name}")
-            elif not _non_empty_file(path / name):
-                problems.append(f"{name} is empty")
-        if not any(_non_empty_file(path / name) for name in WHISPER_VOCAB_FILES):
-            problems.append("missing vocabulary.txt / vocabulary.json")
-        model_bin = path / "model.bin"
-        if _non_empty_file(model_bin) and model_bin.stat().st_size < WHISPER_MIN_MODEL_BYTES:
-            problems.append("model.bin is too small (download probably incomplete)")
-    elif config.backend == "vosk":
-        for entry in VOSK_REQUIRED_ENTRIES:
-            if not (path / entry).exists():
-                problems.append(f"missing {entry}")
+    for name in WHISPER_REQUIRED_FILES:
+        if not (path / name).is_file():
+            problems.append(f"missing {name}")
+        elif not _non_empty_file(path / name):
+            problems.append(f"{name} is empty")
+    if not any(_non_empty_file(path / name) for name in WHISPER_VOCAB_FILES):
+        problems.append("missing vocabulary.txt / vocabulary.json")
+    model_bin = path / "model.bin"
+    if _non_empty_file(model_bin) and model_bin.stat().st_size < WHISPER_MIN_MODEL_BYTES:
+        problems.append("model.bin is too small (download probably incomplete)")
     return problems
 
 
@@ -129,32 +102,9 @@ def _download_model(config: LanguageConfig) -> None:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     path = model_path(config)
 
-    if config.backend == "vosk":
-        url = (
-            "https://alphacephei.com/vosk/models/"
-            "vosk-model-small-en-us-0.15.zip"
-        )
+    from huggingface_hub import snapshot_download
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".zip", dir=MODELS_DIR, delete=False
-        ) as temp:
-            archive = Path(temp.name)
-            with urllib.request.urlopen(url, timeout=120) as response:
-                shutil.copyfileobj(response, temp)
-
-        try:
-            with zipfile.ZipFile(archive) as zf:
-                zf.extractall(MODELS_DIR)
-        finally:
-            archive.unlink(missing_ok=True)
-
-    elif config.backend == "whisper":
-        from huggingface_hub import snapshot_download
-
-        snapshot_download(
-            repo_id="Systran/faster-whisper-small",
-            local_dir=str(path),
-        )
+    snapshot_download(repo_id="Systran/faster-whisper-small", local_dir=str(path))
 
     if not path.is_dir():
         raise RuntimeError(f"Model folder was not created: {path}")
@@ -197,12 +147,6 @@ def load_model(language: str):
     ensure_model(language)
     path = model_path(config)
     try:
-        if config.backend == "vosk":
-            from vosk import Model, SetLogLevel
-            SetLogLevel(-1)
-            print(f"[SpeakReady] Backend: {config.backend}")
-            print(f"[SpeakReady] Model path: {path}")
-            return Model(str(path))
         from faster_whisper import WhisperModel
         return WhisperModel(str(path), device="cpu", compute_type="int8")
     except Exception as exc:  # noqa: BLE001
@@ -213,24 +157,8 @@ def load_model(language: str):
 
 
 # --------------------------------------------------------------------------- #
-# Recognizer back-ends. feed() returns (partial_text, finalized_text_or_None)
+# Recognizer back-end. feed() returns (partial_text, finalized_text_or_None)
 # --------------------------------------------------------------------------- #
-class VoskBackend:
-    """True streaming: Vosk emits a partial hypothesis after every chunk."""
-
-    def __init__(self, model):
-        from vosk import KaldiRecognizer
-        self._rec = KaldiRecognizer(model, SAMPLE_RATE)
-
-    def feed(self, pcm: bytes) -> tuple[str, str | None]:
-        if self._rec.AcceptWaveform(pcm):          # True = Vosk detected an utterance end
-            return "", json.loads(self._rec.Result()).get("text", "").strip()
-        return json.loads(self._rec.PartialResult()).get("partial", "").strip(), None
-
-    def flush(self) -> str:
-        return json.loads(self._rec.FinalResult()).get("text", "").strip()
-
-
 class WhisperChunkBackend:
     """
     Whisper is not a streaming model, so partials are produced by re-decoding the
@@ -299,8 +227,7 @@ class WhisperChunkBackend:
 
 
 def make_backend(language: str, model):
-    config = LANGUAGES[language]
-    return VoskBackend(model) if config.backend == "vosk" else WhisperChunkBackend(model, language)
+    return WhisperChunkBackend(model, language)
 
 
 # --------------------------------------------------------------------------- #

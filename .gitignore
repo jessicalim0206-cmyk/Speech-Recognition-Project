@@ -4,3 +4,5 @@ models/*
 !models/README.md
 evaluation/clips/
 evaluation/manifest.csv
+.DS_Store
+.pytest_cache/
