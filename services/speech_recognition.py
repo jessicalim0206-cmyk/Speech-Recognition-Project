@@ -62,7 +62,7 @@ LANGUAGES: dict[str, LanguageConfig] = {
         "English",
         "whisper",
         "faster-whisper-small",
-        "Download the faster-whisper-small model locally.",
+        "huggingface-cli download Systran/faster-whisper-small --local-dir models/faster-whisper-small",
     ),
     "id": _indonesian_config(),
 }
@@ -70,14 +70,57 @@ LANGUAGES: dict[str, LanguageConfig] = {
 
 
 class ModelNotInstalled(Exception):
-    def __init__(self, config: LanguageConfig):
+    """The model folder is missing, incomplete, or could not be downloaded."""
+
+    def __init__(self, config: LanguageConfig, reason: str | None = None):
         self.config = config
-        super().__init__(f"Model folder models/{config.folder} not found")
+        self.reason = reason
+        message = f"Model folder models/{config.folder} not found or incomplete"
+        if reason:
+            message += f": {reason}"
+        super().__init__(message)
 
 
 def model_path(config: LanguageConfig) -> Path:
     return MODELS_DIR / config.folder
 
+
+# --------------------------------------------------------------------------- #
+# Model validation: a folder that merely exists is not enough (an interrupted
+# download leaves a folder with missing or truncated files).
+# --------------------------------------------------------------------------- #
+WHISPER_REQUIRED_FILES = ("config.json", "model.bin", "tokenizer.json")
+WHISPER_VOCAB_FILES = ("vocabulary.txt", "vocabulary.json")      # at least one must exist
+WHISPER_MIN_MODEL_BYTES = 100 * 1024 * 1024                      # real model.bin is hundreds of MB
+VOSK_REQUIRED_ENTRIES = ("am/final.mdl", "conf/mfcc.conf", "graph")
+
+
+def _non_empty_file(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
+
+
+def model_problems(config: LanguageConfig) -> list[str]:
+    """Return a list of human-readable problems with the local model. Empty list = model is OK."""
+    path = model_path(config)
+    if not path.is_dir():
+        return [f"folder {path} does not exist"]
+    problems: list[str] = []
+    if config.backend == "whisper":
+        for name in WHISPER_REQUIRED_FILES:
+            if not (path / name).is_file():
+                problems.append(f"missing {name}")
+            elif not _non_empty_file(path / name):
+                problems.append(f"{name} is empty")
+        if not any(_non_empty_file(path / name) for name in WHISPER_VOCAB_FILES):
+            problems.append("missing vocabulary.txt / vocabulary.json")
+        model_bin = path / "model.bin"
+        if _non_empty_file(model_bin) and model_bin.stat().st_size < WHISPER_MIN_MODEL_BYTES:
+            problems.append("model.bin is too small (download probably incomplete)")
+    elif config.backend == "vosk":
+        for entry in VOSK_REQUIRED_ENTRIES:
+            if not (path / entry).exists():
+                problems.append(f"missing {entry}")
+    return problems
 
 
 def _download_model(config: LanguageConfig) -> None:
@@ -116,18 +159,32 @@ def _download_model(config: LanguageConfig) -> None:
         raise RuntimeError(f"Model folder was not created: {path}")
 
 
-def is_model_installed(language: str) -> bool:
+def ensure_model(language: str) -> None:
+    """Make sure a complete model is on disk. Downloads or repairs it if needed.
+    Raises ModelNotInstalled (with the reason) if it still is not usable afterwards."""
     config = LANGUAGES[language]
-    path = model_path(config)
-
-    if path.is_dir():
-        return True
-
+    problems = model_problems(config)
+    if not problems:
+        return
+    print(f"[SpeakReady] Model for '{language}' is not ready ({'; '.join(problems)}). Downloading...")
     try:
+        # snapshot_download skips files that are already complete and fetches only the missing ones,
+        # so this also repairs a half-finished download.
         _download_model(config)
-        return path.is_dir()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"Model download failed for {language}: {exc}")
+        raise ModelNotInstalled(config, f"download failed ({exc})") from exc
+    problems = model_problems(config)
+    if problems:
+        raise ModelNotInstalled(config, "; ".join(problems))
+
+
+def is_model_installed(language: str) -> bool:
+    """True if a complete model is available (downloads/repairs it first if needed)."""
+    try:
+        ensure_model(language)
+        return True
+    except ModelNotInstalled:
         return False
 
 
@@ -136,18 +193,22 @@ def load_model(language: str):
     config = LANGUAGES.get(language)
     if config is None:
         raise ValueError(f"Unsupported language: {language}")
+    ensure_model(language)
     path = model_path(config)
-    if not path.is_dir() and not is_model_installed(language):
-        raise ModelNotInstalled(config)
-    if config.backend == "vosk":
-        from vosk import Model, SetLogLevel
-        SetLogLevel(-1)
-        print(f"[SpeakReady] Backend: {config.backend}")
-        print(f"[SpeakReady] Model path: {path}")
-        print(f"[SpeakReady] Model exists: {path.is_dir()}")
-        return Model(str(path))
-    from faster_whisper import WhisperModel
-    return WhisperModel(str(path), device="cpu", compute_type="int8")
+    try:
+        if config.backend == "vosk":
+            from vosk import Model, SetLogLevel
+            SetLogLevel(-1)
+            print(f"[SpeakReady] Backend: {config.backend}")
+            print(f"[SpeakReady] Model path: {path}")
+            return Model(str(path))
+        from faster_whisper import WhisperModel
+        return WhisperModel(str(path), device="cpu", compute_type="int8")
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"The model files in {path} exist but could not be loaded ({exc}). "
+            f"They may be corrupt: delete that folder and start the app again to download it fresh."
+        ) from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -182,6 +243,7 @@ class WhisperChunkBackend:
 
     KEEP = "__keep__"        # sentinel: no new decode happened, keep the previous partial
     SPEECH_RMS = 0.012       # chunk loudness (0..1) that counts as speech; lower it for very quiet mics
+    MAX_SEGMENT_SECONDS = 12.0   # force a segment break so one decode never gets longer than this
 
     def __init__(self, model, language: str, interval: float = 1.5, pause: float = 0.8):
         self._model, self._lang = model, language
@@ -190,6 +252,7 @@ class WhisperChunkBackend:
         self._since_decode = 0.0
         self._silence = 0.0
         self._has_speech = False
+        self.behind = False      # set by the session when audio is queueing up: skip partial decodes
 
     def _decode(self) -> str:
         segments, _ = self._model.transcribe(
@@ -215,11 +278,13 @@ class WhisperChunkBackend:
             self._since_decode = 0.0
             return self.KEEP, None
         self._since_decode += seconds
-        if self._silence >= self._pause:
+        too_long = len(self._buf) >= SAMPLE_RATE * self.MAX_SEGMENT_SECONDS
+        if self._silence >= self._pause or too_long:
             text = self._decode()
             self._reset()
             return "", text
-        if self._since_decode >= self._interval:
+        if self._since_decode >= self._interval and not self.behind:
+            # (when `behind`, we keep buffering and decode as soon as the queue has caught up)
             self._since_decode = 0.0
             return self._decode(), None
         return self.KEEP, None
@@ -259,6 +324,8 @@ class TranscriptSnapshot:
 class RecognitionSession:
     """One practice attempt. Thread-safe; owns the worker thread that runs the model."""
 
+    BEHIND_FRAMES = 25   # about 0.5 s of queued audio: beyond this the worker skips partial decodes
+
     def __init__(self, language: str, model):
         self.language = language
         self._model = model
@@ -273,6 +340,8 @@ class RecognitionSession:
         self.latencies: list[float] = []   # seconds, see _worker for the exact definition
         self._worker_thread: threading.Thread | None = None
         self._stop_flag = threading.Event()
+        self._finished = threading.Event()
+        self._stop_requested_at = None
 
     # ---- lifecycle ------------------------------------------------------- #
     @property
@@ -297,20 +366,22 @@ class RecognitionSession:
         self._worker_thread = threading.Thread(target=self._worker, args=(backend,), daemon=True)
         self._worker_thread.start()
 
-    def stop(self) -> None:
-        """Stop listening, drain queued audio, and finalize the transcript."""
-        if not self.started or self.stopped:
+    def request_stop(self) -> None:
+        """Ask the worker to finish and return immediately. The worker drains the queue,
+        finalizes the transcript, then marks the session stopped."""
+        if not self.started or self.stopped or self._stop_flag.is_set():
             return
+        self._stop_requested_at = time.time()
         with self._lock:
             if self._status != "error":
                 self._status = "processing"
         self._stop_flag.set()
+
+    def stop(self) -> None:
+        """Blocking version (used by tests): request_stop() then wait for the worker."""
+        self.request_stop()
         if self._worker_thread:
             self._worker_thread.join(timeout=60)
-        self._stopped_at = time.time()
-        with self._lock:
-            if self._status != "error":
-                self._status = "stopped"
 
     # ---- called from the WebRTC thread (must stay fast) ------------------ #
     def push_audio(self, pcm: bytes, level: float) -> None:
@@ -334,6 +405,7 @@ class RecognitionSession:
                     pcm, t_arrived = self._queue.get(timeout=0.1)
                 except queue.Empty:
                     continue
+                backend.behind = self._queue.qsize() > self.BEHIND_FRAMES
                 partial, final = backend.feed(pcm)
                 t_done = time.perf_counter()
                 changed = False
@@ -357,6 +429,12 @@ class RecognitionSession:
                 self._partial = ""
         except Exception as exc:  # noqa: BLE001
             self._fail(f"Recognition failed: {exc}")
+        finally:
+            self._stopped_at = time.time()
+            with self._lock:
+                if self._status != "error":
+                    self._status = "stopped"
+            self._finished.set()
 
     def _fail(self, message: str) -> None:
         with self._lock:
@@ -365,7 +443,7 @@ class RecognitionSession:
     # ---- read side (UI thread) ------------------------------------------- #
     def snapshot(self) -> TranscriptSnapshot:
         with self._lock:
-            end = self._stopped_at or time.time()
+            end = self._stop_requested_at or self._stopped_at or time.time()
             elapsed = (end - self._started_at) if self._started_at else 0.0
             return TranscriptSnapshot(self._status, self._partial, list(self._finals), list(self._levels),
                                       elapsed, self._audio_seconds, self._frames, self._error)

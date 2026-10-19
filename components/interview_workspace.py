@@ -25,7 +25,7 @@ def reset_attempt() -> None:
     """Discard the current attempt (stops the worker) and start with a clean transcript."""
     old = st.session_state.get("session")
     if old is not None:
-        old.stop()
+        old.request_stop()
     st.session_state.session = None
     st.session_state.attempt = st.session_state.get("attempt", 0) + 1
 
@@ -58,7 +58,8 @@ def render_workspace(lang: str) -> None:
         with st.spinner("Loading speech model..." if lang == "en" else "Memuat model suara..."):
             model = get_model(lang)
     except ModelNotInstalled as exc:
-        hint = f'<br><code>{exc.config.download_hint}</code><br>See models/README.md.'
+        reason = f'<br>{exc.reason}' if exc.reason else ''
+        hint = f'{reason}<br><code>{exc.config.download_hint}</code><br>See models/README.md.'
         st.markdown(state_html(t["model_missing_t"].format(lang=LANGUAGES[lang].label), t["model_missing_b"], "info", hint),
                     unsafe_allow_html=True)
         _back_button(t)
@@ -97,7 +98,7 @@ def render_workspace(lang: str) -> None:
     if playing and not session.started:
         session.start()
     if session.started and not session.stopped and not playing:
-        session.stop()       # user pressed STOP: drain the queue and finalize
+        session.request_stop()   # user pressed STOP: non-blocking; the worker finalizes in the background
 
     snap = session.snapshot()
 
@@ -114,7 +115,8 @@ def render_workspace(lang: str) -> None:
     paint(snap)
     _notices(notice_ph, t, snap)
 
-    if playing and not session.stopped:
+    if session.started and not session.stopped:
+        # keep refreshing while listening AND while the worker is still finishing ("Processing")
         time.sleep(0.5)
         st.rerun()
 

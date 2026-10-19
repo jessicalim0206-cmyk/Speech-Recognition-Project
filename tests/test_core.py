@@ -72,5 +72,53 @@ def test_missing_model_is_friendly():
     print("(model is installed locally; skipped)")
 
 
+def test_incomplete_model_is_detected():
+    """A model folder that merely exists must not count as installed."""
+    import tempfile
+    from pathlib import Path
+    import services.speech_recognition as sr
+
+    cfg = sr.LANGUAGES["en"]
+    old_dir, old_dl = sr.MODELS_DIR, sr._download_model
+    with tempfile.TemporaryDirectory() as tmp:
+        sr.MODELS_DIR = Path(tmp)
+        folder = sr.model_path(cfg)
+
+        def make_complete():
+            folder.mkdir(parents=True, exist_ok=True)
+            for name in ("config.json", "tokenizer.json", "vocabulary.txt"):
+                (folder / name).write_text("x")
+            with open(folder / "model.bin", "wb") as f:
+                f.truncate(sr.WHISPER_MIN_MODEL_BYTES + 1)   # sparse file, no real disk use
+
+        try:
+            # 1) folder missing
+            assert sr.model_problems(cfg), "missing folder must be a problem"
+            # 2) folder exists but only half the files (interrupted download)
+            folder.mkdir(parents=True); (folder / "config.json").write_text("x")
+            probs = sr.model_problems(cfg)
+            assert any("model.bin" in p for p in probs), probs
+            # 3) truncated model.bin
+            make_complete(); (folder / "model.bin").write_bytes(b"x" * 1024)
+            assert any("too small" in p for p in sr.model_problems(cfg)), sr.model_problems(cfg)
+            # 4) complete folder passes
+            make_complete(); assert sr.model_problems(cfg) == []
+            # 5) incomplete + download fails -> clear ModelNotInstalled with reason, not a crash
+            (folder / "tokenizer.json").unlink()
+            def failing(_cfg): raise OSError("no internet")
+            sr._download_model = failing
+            try:
+                sr.ensure_model("en"); raise AssertionError("should have raised")
+            except sr.ModelNotInstalled as e:
+                assert "no internet" in str(e) and e.reason
+            assert sr.is_model_installed("en") is False
+            # 6) incomplete + download repairs it -> ok
+            sr._download_model = lambda _cfg: make_complete()
+            sr.ensure_model("en"); assert sr.is_model_installed("en") is True
+        finally:
+            sr.MODELS_DIR, sr._download_model = old_dir, old_dl
+    print("incomplete model detection ok")
+
+
 if __name__ == "__main__":
-    test_streaming_session(); test_audio_callback_resamples_48k_stereo(); test_conditions(); test_missing_model_is_friendly()
+    test_streaming_session(); test_audio_callback_resamples_48k_stereo(); test_conditions(); test_missing_model_is_friendly(); test_incomplete_model_is_detected()
