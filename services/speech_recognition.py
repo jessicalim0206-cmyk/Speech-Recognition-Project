@@ -315,6 +315,7 @@ class TranscriptSnapshot:
     audio_seconds: float
     frames_received: int
     error: str | None
+    last_latency: float | None = None   # seconds, most recent measured delay (see _worker)
 
     @property
     def full_text(self) -> str:
@@ -446,7 +447,8 @@ class RecognitionSession:
             end = self._stop_requested_at or self._stopped_at or time.time()
             elapsed = (end - self._started_at) if self._started_at else 0.0
             return TranscriptSnapshot(self._status, self._partial, list(self._finals), list(self._levels),
-                                      elapsed, self._audio_seconds, self._frames, self._error)
+                                      elapsed, self._audio_seconds, self._frames, self._error,
+                                      self.latencies[-1] if self.latencies else None)
 
     def latency_summary(self) -> dict | None:
         if not self.latencies:

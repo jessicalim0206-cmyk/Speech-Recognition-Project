@@ -38,6 +38,7 @@ h1,h2,h3,p,label,span,div{font-family:var(--sans)}
 .sr-wave span{flex:1;min-width:2px;max-width:6px;border-radius:2px;background:var(--cobalt);opacity:.85;transition:height .12s}
 .sr-wave.idle span{background:var(--border);opacity:1}
 .sr-timer{font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;letter-spacing:-.01em}
+.sr-latency{font-variant-numeric:tabular-nums;color:var(--slate);font-size:13px;margin:-2px 0 6px}
 .sr-transcript{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:32px;min-height:280px;max-height:520px;overflow-y:auto}
 .sr-transcript p{font-size:20px;line-height:1.7;max-width:34em;margin:0;color:var(--ink)}
 .sr-transcript .partial{color:var(--cobalt)}

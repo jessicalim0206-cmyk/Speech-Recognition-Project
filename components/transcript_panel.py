@@ -11,6 +11,17 @@ def format_time(seconds: float) -> str:
     return f"{int(seconds // 60):02d}:{int(seconds % 60):02d}"
 
 
+def latency_html(seconds: float | None, lang: str) -> str:
+    """Latest processing delay (audio reached the app -> text changed). Shows a dash until the first update."""
+    if seconds is None:
+        value = "—"
+    elif seconds < 1:
+        value = f"{seconds * 1000:.0f} ms"
+    else:
+        value = f"{seconds:.1f} s"
+    return f'<div class="sr-latency">{T[lang]["latency"]}: <b>{value}</b></div>'
+
+
 def status_html(status: str, lang: str) -> str:
     return f'<span class="sr-status {status}"><span class="sr-dot"></span>{T[lang][status]}</span>'
 

@@ -8,7 +8,7 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
 from components.copy import T
 from components.icons import icon
-from components.transcript_panel import state_html, status_html, transcript_html, wave_html, format_time
+from components.transcript_panel import state_html, status_html, transcript_html, wave_html, format_time, latency_html
 from services.answer_feedback import count_words
 from services.audio_capture import make_audio_callback
 from services.questions import category_label, questions_for
@@ -75,7 +75,7 @@ def render_workspace(lang: str) -> None:
 
     col_rec, col_txt = st.columns([5, 7], gap="large")
     with col_rec:
-        status_ph, timer_ph, wave_ph = st.empty(), st.empty(), st.empty()
+        status_ph, timer_ph, lat_ph, wave_ph = st.empty(), st.empty(), st.empty(), st.empty()
         ctx = webrtc_streamer(
             key=f"sr-{s.attempt}",
             mode=WebRtcMode.SENDONLY,
@@ -109,6 +109,7 @@ def render_workspace(lang: str) -> None:
         live = snap.status == "listening"
         status_ph.markdown(status_html(snap.status, lang), unsafe_allow_html=True)
         timer_ph.markdown(f'<div class="sr-timer" aria-label="{t["elapsed"]}">{format_time(snap.elapsed)}</div>', unsafe_allow_html=True)
+        lat_ph.markdown(latency_html(snap.last_latency, lang), unsafe_allow_html=True)
         wave_ph.markdown(wave_html(snap.levels, live), unsafe_allow_html=True)
         txt_ph.markdown(transcript_html(snap, lang, live), unsafe_allow_html=True)
 
