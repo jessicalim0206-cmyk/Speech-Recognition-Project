@@ -1,7 +1,8 @@
 """
 Local speech recognition: model registry, recognizer back-ends and a streaming session.
 
-Everything here runs on the user's machine. No audio leaves the computer.
+Recognition runs in this process with a local open-source model (faster-whisper); no external speech API is called.
+In local mode this process runs on the user's computer, so the audio stays there.
 
 Data flow (see docs/ARCHITECTURE.md):
   browser mic -> WebRTC -> audio_capture (resample to 16 kHz mono PCM16)

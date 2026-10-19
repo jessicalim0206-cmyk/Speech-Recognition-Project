@@ -2,7 +2,7 @@
 T = {
  "en": {
   "headline": "Your next interview starts with practice.",
-  "lead": "Answer real interview questions out loud and watch your words appear as you speak. Speech recognition runs on your own computer, so your voice stays with you.",
+  "lead": "Answer real interview questions out loud and watch your words appear as you speak. Speech is recognized by an open-source model that SpeakReady runs itself, with no external speech-to-text service.",
   "setup_title": "Set up a practice session", "language": "Language", "category": "Interview category",
   "start": "Start practicing", "nav_practice": "Practice", "nav_dev": "Developer tests",
   "how_title": "How a session works",
@@ -31,7 +31,7 @@ T = {
  },
  "id": {
   "headline": "Wawancara berikutnya dimulai dari latihan.",
-  "lead": "Jawab pertanyaan wawancara dengan suara dan lihat kata-kata Anda muncul saat berbicara. Pengenalan suara berjalan di komputer Anda sendiri, jadi suara Anda tetap bersama Anda.",
+  "lead": "Jawab pertanyaan wawancara dengan suara dan lihat kata-kata Anda muncul saat berbicara. Suara dikenali oleh model open-source yang dijalankan SpeakReady sendiri, tanpa layanan speech-to-text eksternal.",
   "setup_title": "Siapkan sesi latihan", "language": "Bahasa", "category": "Kategori wawancara",
   "start": "Mulai berlatih", "nav_practice": "Latihan", "nav_dev": "Uji pengembang",
   "how_title": "Cara kerja sesi latihan",

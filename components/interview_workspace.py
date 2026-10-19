@@ -85,7 +85,7 @@ def render_workspace(lang: str) -> None:
                 "iceServers": [
                     {"urls": ["stun:stun.l.google.com:19302"]}
                 ]
-            },   # local use: no external STUN server contacted
+            },   # public STUN server, only for address discovery; the audio is not relayed through it
             translations=WEBRTC_TEXT[lang],
         )
         notice_ph = st.empty()

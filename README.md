@@ -1,7 +1,7 @@
 # SpeakReady
 
 Bilingual (English / Bahasa Indonesia) interview practice with **local, streaming speech recognition**.
-Audio never leaves your computer: no cloud speech APIs.
+In local mode (`streamlit run app.py`) speech recognition runs on your own computer with an open-source model, and the audio is not sent to any cloud speech API or other server.
 
 ## Setup
 ```bash
@@ -18,7 +18,7 @@ streamlit run app.py
 ```
 Open the URL in Chrome or Edge on the same computer (microphone access works on `localhost`). Allow the microphone,
 press START, and speak. The first request loads the model, which takes a few seconds.
-WebRTC is configured without an external STUN server, which is fine locally; deploying to another machine needs a TURN/STUN setup.
+WebRTC is configured with a public STUN server (`stun.l.google.com`) that is only used to discover network addresses for the connection; the audio does not pass through it. Running on another machine or behind a strict network may also need a TURN server.
 
 ## Tests (no model or microphone needed)
 ```bash
